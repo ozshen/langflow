@@ -54,7 +54,10 @@ class OllamaEmbeddingsComponent(LCModelComponent):
         return output
 
     async def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None):
-        if field_name in {"base_url", "model_name"} and not await self.is_valid_ollama_url(field_value):
+        if field_name not in {"model_name", "base_url", "tool_model_enabled"}:
+            return build_config
+
+        if field_name in {"base_url"} and not await self.is_valid_ollama_url(field_value):
             # Check if any URL in the list is valid
             valid_url = ""
             for url in URL_LIST:
@@ -62,13 +65,13 @@ class OllamaEmbeddingsComponent(LCModelComponent):
                     valid_url = url
                     break
             build_config["base_url"]["value"] = valid_url
-        if field_name in {"model_name", "base_url", "tool_model_enabled"}:
-            if await self.is_valid_ollama_url(self.base_url):
-                build_config["model_name"]["options"] = await self.get_model(self.base_url)
-            elif await self.is_valid_ollama_url(build_config["base_url"].get("value", "")):
-                build_config["model_name"]["options"] = await self.get_model(build_config["base_url"].get("value", ""))
-            else:
-                build_config["model_name"]["options"] = []
+
+        if await self.is_valid_ollama_url(self.base_url):
+            build_config["model_name"]["options"] = await self.get_model(self.base_url)
+        elif await self.is_valid_ollama_url(build_config["base_url"].get("value", "")):
+            build_config["model_name"]["options"] = await self.get_model(build_config["base_url"].get("value", ""))
+        else:
+            build_config["model_name"]["options"] = []
 
         return build_config
 
@@ -102,5 +105,6 @@ class OllamaEmbeddingsComponent(LCModelComponent):
         try:
             async with httpx.AsyncClient() as client:
                 return (await client.get(f"{url}/api/tags")).status_code == HTTP_STATUS_OK
-        except httpx.RequestError:
-            return False
+        except httpx.RequestError as e:
+            msg = "Could not connect to Ollama API."
+            raise ValueError(msg) from e
